@@ -1,6 +1,6 @@
 
 
-      
+    
 name: Build Android APK
 
 on:
@@ -27,13 +27,12 @@ jobs:
 
       - name: Build APK
         run: |
-          chmod +x android_app/gradlew
-          cd android_app
+          chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ScreenOCRMonitor-APK
-          path: android_app/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
