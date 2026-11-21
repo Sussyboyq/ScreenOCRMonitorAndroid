@@ -176,7 +176,6 @@ class ScreenCaptureService : LifecycleService() {
         )
     }
 
-    // Creates a fresh MediaProjection session from a fresh permission result.
     @SuppressLint("WrongConstant")
     private fun initMediaProjection(
         resultCode: Int,
@@ -187,7 +186,6 @@ class ScreenCaptureService : LifecycleService() {
             var newReader: ImageReader? = null
 
             try {
-                // Release any previous session before creating a new one.
                 releaseMediaProjection()
 
                 val projection =
@@ -200,7 +198,6 @@ class ScreenCaptureService : LifecycleService() {
 
                 mediaProjection = projection
 
-                // Register callback before creating the virtual display.
                 val callback = object : MediaProjection.Callback() {
 
                     override fun onStop() {
@@ -210,7 +207,6 @@ class ScreenCaptureService : LifecycleService() {
                         )
 
                         synchronized(this@ScreenCaptureService) {
-                            // Ignore callbacks belonging to an old session.
                             if (mediaProjection !== projection) return
 
                             virtualDisplay?.release()
@@ -242,7 +238,6 @@ class ScreenCaptureService : LifecycleService() {
                     2
                 )
 
-                // Exactly one virtual display is created for this session.
                 val newDisplay = projection.createVirtualDisplay(
                     "ScreenOCRMonitorDisplay",
                     screenWidth,
@@ -283,13 +278,11 @@ class ScreenCaptureService : LifecycleService() {
         }
     }
 
-    // Releases the complete current screen-capture session.
     private fun releaseMediaProjection() {
         synchronized(this) {
             val oldProjection = mediaProjection
             val oldCallback = mediaProjectionCallback
 
-            // Clear references before stopping the old projection.
             mediaProjection = null
             mediaProjectionCallback = null
 
@@ -297,9 +290,7 @@ class ScreenCaptureService : LifecycleService() {
                 if (oldProjection != null && oldCallback != null) {
                     oldProjection.unregisterCallback(oldCallback)
                 }
-            } catch (_: Exception) {
-                // Projection may already have stopped.
-            }
+            } catch (_: Exception) {}
 
             try {
                 virtualDisplay?.release()
@@ -339,7 +330,6 @@ class ScreenCaptureService : LifecycleService() {
                     2
                 )
 
-                // Resize the existing display; do NOT create another one.
                 virtualDisplay?.resize(
                     screenWidth,
                     screenHeight,
@@ -382,7 +372,6 @@ class ScreenCaptureService : LifecycleService() {
 
             ACTION_START -> {
 
-                // Do not leave an older monitoring job running.
                 if (isMonitoring) {
                     stopMonitoring()
                 }
@@ -652,7 +641,6 @@ class ScreenCaptureService : LifecycleService() {
                                         "OCR"
                                     )
 
-                                    // Check all comma-separated targets.
                                     val matchedTarget =
                                         MatchEvaluator.findMatchedTarget(
                                             text = ocrText,
@@ -739,10 +727,10 @@ class ScreenCaptureService : LifecycleService() {
                 image = reader.acquireLatestImage()
                     ?: return null
 
-                val planes = image.planes
-                val buffer: ByteBuffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
+                val plane = image.planes[0]
+                val buffer: ByteBuffer = plane.buffer
+                val pixelStride = plane.pixelStride
+                val rowStride = plane.rowStride
 
                 val actualBufferWidth = rowStride / pixelStride
 
@@ -754,44 +742,50 @@ class ScreenCaptureService : LifecycleService() {
 
                 fullBitmap.copyPixelsFromBuffer(buffer)
 
-                if (appConfig.showBorder) {
-                    val region = appConfig.selectedRegion
+                val region = appConfig.selectedRegion
 
-                    if (
-                        region != null &&
-                        region.width() > 5 &&
-                        region.height() > 5
-                    ) {
-                        val safeLeft =
-                            maxOf(0, minOf(region.left, screenWidth - 1))
+                // Crop only when a valid region is selected.
+                if (
+                    appConfig.showBorder &&
+                    region != null &&
+                    region.width() > 5 &&
+                    region.height() > 5
+                ) {
+                    val safeLeft = maxOf(
+                        0,
+                        minOf(region.left, screenWidth - 1)
+                    )
 
-                        val safeTop =
-                            maxOf(0, minOf(region.top, screenHeight - 1))
+                    val safeTop = maxOf(
+                        0,
+                        minOf(region.top, screenHeight - 1)
+                    )
 
-                        val safeWidth =
-                            minOf(region.width(), screenWidth - safeLeft)
+                    val safeWidth = minOf(
+                        region.width(),
+                        screenWidth - safeLeft
+                    )
 
-                        val safeHeight =
-                            minOf(region.height(), screenHeight - safeTop)
+                    val safeHeight = minOf(
+                        region.height(),
+                        screenHeight - safeTop
+                    )
 
-                        if (safeWidth > 5 && safeHeight > 5) {
-                            val cropped = Bitmap.createBitmap(
-                                fullBitmap,
-                                safeLeft,
-                                safeTop,
-                                safeWidth,
-                                safeHeight
-                            )
+                    if (safeWidth > 5 && safeHeight > 5) {
+                        val cropped = Bitmap.createBitmap(
+                            fullBitmap,
+                            safeLeft,
+                            safeTop,
+                            safeWidth,
+                            safeHeight
+                        )
 
-                            fullBitmap.recycle()
-                            return cropped
-                        }
+                        fullBitmap.recycle()
+                        return cropped
                     }
-
-                    fullBitmap.recycle()
-                    return null
                 }
 
+                // No valid selected region: use the full screen.
                 val screenOnly = Bitmap.createBitmap(
                     fullBitmap,
                     0,
@@ -804,6 +798,10 @@ class ScreenCaptureService : LifecycleService() {
                 return screenOnly
 
             } catch (e: Exception) {
+                log(
+                    "Screen capture frame error: ${e.message}",
+                    "ERROR"
+                )
                 return null
 
             } finally {
@@ -831,7 +829,6 @@ class ScreenCaptureService : LifecycleService() {
         monitoringJob?.cancel()
         monitoringJob = null
 
-        // Release the capture session so the next start uses a fresh token.
         releaseMediaProjection()
 
         stopAlarm()
@@ -908,7 +905,6 @@ class ScreenCaptureService : LifecycleService() {
             alarmPlayer.release()
         }
 
-        // Final safety cleanup.
         releaseMediaProjection()
 
         ocrEngine.close()
