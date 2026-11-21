@@ -39,14 +39,12 @@ import java.util.*
 class ScreenCaptureService : LifecycleService() {
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
+
     private var mediaProjection: MediaProjection? = null
     private var mediaProjectionCallback: MediaProjection.Callback? = null
 
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-
-    private var projectionResultCode: Int = Activity.RESULT_CANCELED
-    private var projectionData: Intent? = null
 
     private lateinit var prefs: PreferencesManager
     private lateinit var alarmPlayer: AlarmPlayer
@@ -178,6 +176,7 @@ class ScreenCaptureService : LifecycleService() {
         )
     }
 
+    // Creates a fresh MediaProjection session from a fresh permission result.
     @SuppressLint("WrongConstant")
     private fun initMediaProjection(
         resultCode: Int,
@@ -188,54 +187,53 @@ class ScreenCaptureService : LifecycleService() {
             var newReader: ImageReader? = null
 
             try {
-                if (mediaProjection == null) {
-                    mediaProjection =
-                        mediaProjectionManager.getMediaProjection(
-                            resultCode,
-                            data
-                        )
-                }
+                // Release any previous session before creating a new one.
+                releaseMediaProjection()
 
-                val projection = mediaProjection
-                    ?: throw IllegalStateException(
+                val projection =
+                    mediaProjectionManager.getMediaProjection(
+                        resultCode,
+                        data
+                    ) ?: throw IllegalStateException(
                         "MediaProjection could not be initialized"
                     )
 
-                // Register callback BEFORE creating virtual display.
-                if (mediaProjectionCallback == null) {
+                mediaProjection = projection
 
-                    val callback =
-                        object : MediaProjection.Callback() {
+                // Register callback before creating the virtual display.
+                val callback = object : MediaProjection.Callback() {
 
-                            override fun onStop() {
-                                log(
-                                    "MediaProjection stopped by system.",
-                                    "ERROR"
-                                )
+                    override fun onStop() {
+                        log(
+                            "MediaProjection stopped by system.",
+                            "ERROR"
+                        )
 
-                                synchronized(this@ScreenCaptureService) {
-                                    virtualDisplay?.release()
-                                    virtualDisplay = null
+                        synchronized(this@ScreenCaptureService) {
+                            // Ignore callbacks belonging to an old session.
+                            if (mediaProjection !== projection) return
 
-                                    imageReader?.close()
-                                    imageReader = null
+                            virtualDisplay?.release()
+                            virtualDisplay = null
 
-                                    mediaProjection = null
-                                    mediaProjectionCallback = null
-                                }
+                            imageReader?.close()
+                            imageReader = null
 
-                                stopMonitoring()
-                                stopSelf()
-                            }
+                            mediaProjection = null
+                            mediaProjectionCallback = null
                         }
 
-                    mediaProjectionCallback = callback
-
-                    projection.registerCallback(
-                        callback,
-                        Handler(Looper.getMainLooper())
-                    )
+                        stopMonitoring()
+                        stopSelf()
+                    }
                 }
+
+                mediaProjectionCallback = callback
+
+                projection.registerCallback(
+                    callback,
+                    Handler(Looper.getMainLooper())
+                )
 
                 newReader = ImageReader.newInstance(
                     screenWidth,
@@ -244,6 +242,7 @@ class ScreenCaptureService : LifecycleService() {
                     2
                 )
 
+                // Exactly one virtual display is created for this session.
                 val newDisplay = projection.createVirtualDisplay(
                     "ScreenOCRMonitorDisplay",
                     screenWidth,
@@ -253,13 +252,9 @@ class ScreenCaptureService : LifecycleService() {
                     newReader.surface,
                     null,
                     null
+                ) ?: throw IllegalStateException(
+                    "Virtual display creation failed"
                 )
-
-                if (newDisplay == null) {
-                    throw IllegalStateException(
-                        "Virtual display creation failed"
-                    )
-                }
 
                 imageReader = newReader
                 virtualDisplay = newDisplay
@@ -276,16 +271,51 @@ class ScreenCaptureService : LifecycleService() {
             } catch (e: Exception) {
                 newReader?.close()
 
+                releaseMediaProjection()
+
                 log(
                     "MediaProjection initialization error: ${e.message}",
                     "ERROR"
                 )
 
-                imageReader?.close()
-                imageReader = null
-
                 return false
             }
+        }
+    }
+
+    // Releases the complete current screen-capture session.
+    private fun releaseMediaProjection() {
+        synchronized(this) {
+            val oldProjection = mediaProjection
+            val oldCallback = mediaProjectionCallback
+
+            // Clear references before stopping the old projection.
+            mediaProjection = null
+            mediaProjectionCallback = null
+
+            try {
+                if (oldProjection != null && oldCallback != null) {
+                    oldProjection.unregisterCallback(oldCallback)
+                }
+            } catch (_: Exception) {
+                // Projection may already have stopped.
+            }
+
+            try {
+                virtualDisplay?.release()
+            } catch (_: Exception) {}
+
+            virtualDisplay = null
+
+            try {
+                imageReader?.close()
+            } catch (_: Exception) {}
+
+            imageReader = null
+
+            try {
+                oldProjection?.stop()
+            } catch (_: Exception) {}
         }
     }
 
@@ -309,6 +339,7 @@ class ScreenCaptureService : LifecycleService() {
                     2
                 )
 
+                // Resize the existing display; do NOT create another one.
                 virtualDisplay?.resize(
                     screenWidth,
                     screenHeight,
@@ -351,12 +382,17 @@ class ScreenCaptureService : LifecycleService() {
 
             ACTION_START -> {
 
-                projectionResultCode = intent.getIntExtra(
+                // Do not leave an older monitoring job running.
+                if (isMonitoring) {
+                    stopMonitoring()
+                }
+
+                val resultCode = intent.getIntExtra(
                     EXTRA_RESULT_CODE,
                     Activity.RESULT_CANCELED
                 )
 
-                projectionData =
+                val data: Intent? =
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         intent.getParcelableExtra(
                             EXTRA_DATA,
@@ -367,21 +403,14 @@ class ScreenCaptureService : LifecycleService() {
                         intent.getParcelableExtra(EXTRA_DATA)
                     }
 
-                val data = projectionData
-
                 if (
-                    projectionResultCode == Activity.RESULT_OK &&
+                    resultCode == Activity.RESULT_OK &&
                     data != null
                 ) {
 
                     startForegroundWithNotification()
 
-                    if (
-                        initMediaProjection(
-                            projectionResultCode,
-                            data
-                        )
-                    ) {
+                    if (initMediaProjection(resultCode, data)) {
                         startMonitoring()
                     } else {
                         log(
@@ -795,12 +824,15 @@ class ScreenCaptureService : LifecycleService() {
     }
 
     fun stopMonitoring() {
-        if (!isMonitoring) return
+        if (!isMonitoring && mediaProjection == null) return
 
         isMonitoring = false
 
         monitoringJob?.cancel()
         monitoringJob = null
+
+        // Release the capture session so the next start uses a fresh token.
+        releaseMediaProjection()
 
         stopAlarm()
 
@@ -876,24 +908,8 @@ class ScreenCaptureService : LifecycleService() {
             alarmPlayer.release()
         }
 
-        mediaProjectionCallback?.let { callback ->
-            try {
-                mediaProjection?.unregisterCallback(callback)
-            } catch (_: Exception) {
-                // Projection may already have stopped.
-            }
-        }
-
-        mediaProjectionCallback = null
-
-        virtualDisplay?.release()
-        virtualDisplay = null
-
-        imageReader?.close()
-        imageReader = null
-
-        mediaProjection?.stop()
-        mediaProjection = null
+        // Final safety cleanup.
+        releaseMediaProjection()
 
         ocrEngine.close()
 
