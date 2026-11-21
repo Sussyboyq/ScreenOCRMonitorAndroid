@@ -548,7 +548,7 @@ class ScreenCaptureService : LifecycleService() {
         isMonitoring = true
 
         log(
-            "Started monitoring. Target: '${appConfig.preset}' " +
+            "Started monitoring. Targets: '${appConfig.preset}' " +
                 "[${appConfig.matchMode.displayName}]",
             "INFO"
         )
@@ -623,8 +623,9 @@ class ScreenCaptureService : LifecycleService() {
                                         "OCR"
                                     )
 
-                                    val matched =
-                                        MatchEvaluator.evaluateMatch(
+                                    // Check all comma-separated targets.
+                                    val matchedTarget =
+                                        MatchEvaluator.findMatchedTarget(
                                             text = ocrText,
                                             preset = appConfig.preset,
                                             mode = appConfig.matchMode,
@@ -632,7 +633,7 @@ class ScreenCaptureService : LifecycleService() {
                                             fuzzyThreshold = appConfig.fuzzyThreshold
                                         )
 
-                                    if (matched) {
+                                    if (matchedTarget != null) {
 
                                         if (
                                             appConfig.matchMode in listOf(
@@ -650,7 +651,7 @@ class ScreenCaptureService : LifecycleService() {
 
                                             log(
                                                 "Numeric Match Triggered! " +
-                                                    "Found: $nums vs Target: ${appConfig.preset}",
+                                                    "Found: $nums vs Target: $matchedTarget",
                                                 "INFO"
                                             )
                                         }
@@ -671,11 +672,11 @@ class ScreenCaptureService : LifecycleService() {
                                             log(
                                                 "MATCH DETECTED " +
                                                     "[${appConfig.matchMode.displayName}]: " +
-                                                    "'${appConfig.preset}' found in \"$displayText\"",
+                                                    "'$matchedTarget' found in \"$displayText\"",
                                                 "MATCH"
                                             )
 
-                                            triggerMatchAlert()
+                                            triggerMatchAlert(matchedTarget)
                                         }
                                     }
                                 }
@@ -782,7 +783,7 @@ class ScreenCaptureService : LifecycleService() {
         }
     }
 
-    private fun triggerMatchAlert() {
+    private fun triggerMatchAlert(matchedTarget: String) {
         alarmPlayer.triggerAlarm(
             appConfig.continuousBeep,
             appConfig.beepInterval
@@ -790,7 +791,7 @@ class ScreenCaptureService : LifecycleService() {
 
         com.screenocr.monitor.firebase.FirebaseSyncManager
             .getInstance(this)
-            .pushAlert("Target matched: ${appConfig.preset}")
+            .pushAlert("Target matched: $matchedTarget")
     }
 
     fun stopMonitoring() {
