@@ -1,3 +1,4 @@
+
 package com.screenocr.monitor.ocr
 
 import com.screenocr.monitor.model.MatchMode
@@ -6,15 +7,19 @@ import kotlin.math.abs
 import kotlin.math.max
 
 object MatchEvaluator {
-    private val NUMBER_PATTERN = Pattern.compile("[-+]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?")
+
+    private val NUMBER_PATTERN =
+        Pattern.compile("[-+]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?")
 
     fun extractNumbers(text: String): List<Double> {
         val matcher = NUMBER_PATTERN.matcher(text)
         val result = mutableListOf<Double>()
+
         while (matcher.find()) {
             val raw = matcher.group().replace(",", "")
             raw.toDoubleOrNull()?.let { result.add(it) }
         }
+
         return result
     }
 
@@ -32,19 +37,22 @@ object MatchEvaluator {
         for (i in 1..len1) {
             for (j in 1..len2) {
                 val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+
                 dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,      // deletion
-                    dp[i][j - 1] + 1,      // insertion
-                    dp[i - 1][j - 1] + cost // substitution
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + cost
                 )
             }
         }
 
         val distance = dp[len1][len2]
         val maxLen = max(len1, len2)
+
         return ((maxLen - distance).toDouble() / maxLen.toDouble()) * 100.0
     }
 
+    // Returns true if ANY comma-separated target matches.
     fun evaluateMatch(
         text: String,
         preset: String,
@@ -52,19 +60,72 @@ object MatchEvaluator {
         caseSensitive: Boolean = false,
         fuzzyThreshold: Int = 80
     ): Boolean {
+
+        val targets = preset.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (targets.isEmpty()) return false
+
+        return targets.any { target ->
+            evaluateSingleMatch(
+                text = text,
+                preset = target,
+                mode = mode,
+                caseSensitive = caseSensitive,
+                fuzzyThreshold = fuzzyThreshold
+            )
+        }
+    }
+
+    // Returns the first target that matches, useful for service logging.
+    fun findMatchedTarget(
+        text: String,
+        preset: String,
+        mode: MatchMode,
+        caseSensitive: Boolean = false,
+        fuzzyThreshold: Int = 80
+    ): String? {
+
+        val targets = preset.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        return targets.firstOrNull { target ->
+            evaluateSingleMatch(
+                text = text,
+                preset = target,
+                mode = mode,
+                caseSensitive = caseSensitive,
+                fuzzyThreshold = fuzzyThreshold
+            )
+        }
+    }
+
+    private fun evaluateSingleMatch(
+        text: String,
+        preset: String,
+        mode: MatchMode,
+        caseSensitive: Boolean,
+        fuzzyThreshold: Int
+    ): Boolean {
+
         if (preset.isBlank()) return false
 
         when (mode) {
+
             MatchMode.CONTAINS -> {
                 val t = if (caseSensitive) text else text.lowercase()
                 val p = if (caseSensitive) preset else preset.lowercase()
                 return t.contains(p)
             }
+
             MatchMode.EXACT -> {
                 val t = if (caseSensitive) text.trim() else text.trim().lowercase()
                 val p = if (caseSensitive) preset.trim() else preset.trim().lowercase()
                 return t == p
             }
+
             MatchMode.REGEX -> {
                 return try {
                     val flags = if (caseSensitive) 0 else Pattern.CASE_INSENSITIVE
@@ -74,18 +135,23 @@ object MatchEvaluator {
                     false
                 }
             }
+
             MatchMode.FUZZY_SIMILARITY -> {
                 val t = if (caseSensitive) text else text.lowercase()
                 val p = if (caseSensitive) preset else preset.lowercase()
+
                 return calculateFuzzySimilarity(t, p) >= fuzzyThreshold
             }
+
             MatchMode.HIGHER_THAN,
             MatchMode.LOWER_THAN,
             MatchMode.EQUAL_TO,
             MatchMode.HIGHER_OR_EQUAL,
             MatchMode.LOWER_OR_EQUAL -> {
+
                 val presetNums = extractNumbers(preset)
                 if (presetNums.isEmpty()) return false
+
                 val targetVal = presetNums[0]
 
                 val ocrNums = extractNumbers(text)
@@ -101,6 +167,7 @@ object MatchEvaluator {
                         else -> {}
                     }
                 }
+
                 return false
             }
         }
