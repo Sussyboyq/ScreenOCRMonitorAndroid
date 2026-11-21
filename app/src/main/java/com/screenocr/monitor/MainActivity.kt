@@ -1,3 +1,4 @@
+
 package com.screenocr.monitor
 
 import android.Manifest
@@ -43,7 +44,11 @@ class MainActivity : AppCompatActivity() {
             startCaptureService(result.resultCode, result.data!!)
         } else {
             appendLog("System", "Screen capture permission denied.", "ERROR")
-            Toast.makeText(this, "Screen capture permission is required to monitor screen.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Screen capture permission is required to monitor screen.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -54,7 +59,11 @@ class MainActivity : AppCompatActivity() {
         updateStepStatus()
         if (Settings.canDrawOverlays(this)) {
             startOverlayService()
-            Toast.makeText(this, "Overlay permission granted!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Overlay permission granted!",
+                Toast.LENGTH_SHORT
+            ).show()
         } else {
             appendLog("System", "Overlay permission not granted.", "ERROR")
         }
@@ -76,6 +85,7 @@ class MainActivity : AppCompatActivity() {
                 ScreenCaptureService.instance?.updateConfig(newConfig)
             }
         }
+
         firebaseSyncManager.initialize { uid ->
             runOnUiThread {
                 binding.tvMainUid.text = "Device UID: $uid"
@@ -97,7 +107,11 @@ class MainActivity : AppCompatActivity() {
     private fun setupUI() {
         // Setup Match Mode Spinner
         val modeNames = MatchMode.entries.map { it.displayName }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, modeNames)
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            modeNames
+        )
         binding.spinnerMatchMode.adapter = adapter
     }
 
@@ -122,7 +136,11 @@ class MainActivity : AppCompatActivity() {
             OverlayService.instance?.resetToFullScreen()
             binding.tvRegionStatus.text = "Region: Full Screen"
             appendLog("Region", "Region reset to Full Screen", "INFO")
-            Toast.makeText(this, "Region reset to Full Screen", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                "Region reset to Full Screen",
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         binding.switchShowBorder.setOnCheckedChangeListener { _, isChecked ->
@@ -130,43 +148,82 @@ class MainActivity : AppCompatActivity() {
             saveConfigFromUI()
         }
 
-        // Step 3: Target Text
+        // Step 3: Multiple comma-separated targets
         binding.etPresetTarget.addTextChangedListener {
             saveConfigFromUI()
             updateStepStatus()
         }
 
         // Match Mode changed
-        binding.spinnerMatchMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val selectedMode = MatchMode.entries[position]
-                binding.layoutFuzzy.visibility = if (selectedMode == MatchMode.FUZZY_SIMILARITY) View.VISIBLE else View.GONE
-                saveConfigFromUI()
+        binding.spinnerMatchMode.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    val selectedMode = MatchMode.entries[position]
+
+                    binding.layoutFuzzy.visibility =
+                        if (selectedMode == MatchMode.FUZZY_SIMILARITY) {
+                            View.VISIBLE
+                        } else {
+                            View.GONE
+                        }
+
+                    saveConfigFromUI()
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
 
         // Fuzzy Slider
         binding.sliderFuzzy.addOnChangeListener { _, value, _ ->
-            binding.tvFuzzyThreshold.text = "Fuzzy Threshold: ${value.toInt()}%"
+            binding.tvFuzzyThreshold.text =
+                "Fuzzy Threshold: ${value.toInt()}%"
             saveConfigFromUI()
         }
 
         // Interval & Cooldown
-        binding.etPollInterval.addTextChangedListener { saveConfigFromUI() }
-        binding.etCooldown.addTextChangedListener { saveConfigFromUI() }
-        binding.etBeepInterval.addTextChangedListener { saveConfigFromUI() }
+        binding.etPollInterval.addTextChangedListener {
+            saveConfigFromUI()
+        }
+
+        binding.etCooldown.addTextChangedListener {
+            saveConfigFromUI()
+        }
+
+        binding.etBeepInterval.addTextChangedListener {
+            saveConfigFromUI()
+        }
 
         // Toggles
-        binding.cbMatchCase.setOnCheckedChangeListener { _, _ -> saveConfigFromUI() }
-        binding.cbSoundAlert.setOnCheckedChangeListener { _, _ -> saveConfigFromUI() }
-        binding.cbContinuousBeep.setOnCheckedChangeListener { _, _ -> saveConfigFromUI() }
-        binding.cbToastAlert.setOnCheckedChangeListener { _, _ -> saveConfigFromUI() }
-        binding.cbAlertOnce.setOnCheckedChangeListener { _, _ -> saveConfigFromUI() }
+        binding.cbMatchCase.setOnCheckedChangeListener { _, _ ->
+            saveConfigFromUI()
+        }
+
+        binding.cbSoundAlert.setOnCheckedChangeListener { _, _ ->
+            saveConfigFromUI()
+        }
+
+        binding.cbContinuousBeep.setOnCheckedChangeListener { _, _ ->
+            saveConfigFromUI()
+        }
+
+        binding.cbToastAlert.setOnCheckedChangeListener { _, _ ->
+            saveConfigFromUI()
+        }
+
+        binding.cbAlertOnce.setOnCheckedChangeListener { _, _ ->
+            saveConfigFromUI()
+        }
 
         // Step 4: Toggle Monitoring
         binding.btnToggleMonitoring.setOnClickListener {
             val service = ScreenCaptureService.instance
+
             if (service != null && service.isMonitoring) {
                 service.stopMonitoring()
             } else {
@@ -200,7 +257,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Live Service Status Callback
-        ScreenCaptureService.onStatusChanged = { isMonitoring, isAlarmRinging ->
+        ScreenCaptureService.onStatusChanged = {
+                isMonitoring, isAlarmRinging ->
             runOnUiThread {
                 updateMonitoringUI(isMonitoring, isAlarmRinging)
             }
@@ -209,55 +267,111 @@ class MainActivity : AppCompatActivity() {
 
     private fun validateAndSave(): Boolean {
         saveConfigFromUI()
-        
+
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Please grant Overlay Permission (Step 1) first!", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Please grant Overlay Permission (Step 1) first!",
+                Toast.LENGTH_LONG
+            ).show()
+
             checkAndStartOverlay()
             return false
         }
 
-        if (config.preset.isBlank()) {
-            Toast.makeText(this, "Please enter a target text to monitor (Step 3)!", Toast.LENGTH_LONG).show()
+        // Split targets and ignore empty entries.
+        val targets = config.preset
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (targets.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Please enter at least one target text to monitor (Step 3)!",
+                Toast.LENGTH_LONG
+            ).show()
+
             binding.etPresetTarget.requestFocus()
             return false
         }
 
-        // Numeric validation
-        if (config.matchMode in listOf(MatchMode.HIGHER_THAN, MatchMode.LOWER_THAN, MatchMode.EQUAL_TO, MatchMode.HIGHER_OR_EQUAL, MatchMode.LOWER_OR_EQUAL)) {
-            val targetNum = config.preset.replace(",", "").toDoubleOrNull()
-            if (targetNum == null) {
-                Toast.makeText(this, "For '${config.matchMode.displayName}', the target must be a valid number!", Toast.LENGTH_LONG).show()
+        // Validate every target for numeric comparison modes.
+        if (
+            config.matchMode in listOf(
+                MatchMode.HIGHER_THAN,
+                MatchMode.LOWER_THAN,
+                MatchMode.EQUAL_TO,
+                MatchMode.HIGHER_OR_EQUAL,
+                MatchMode.LOWER_OR_EQUAL
+            )
+        ) {
+            val invalidTargets = targets.filter { target ->
+                target.replace(",", "").toDoubleOrNull() == null
+            }
+
+            if (invalidTargets.isNotEmpty()) {
+                Toast.makeText(
+                    this,
+                    "For '${config.matchMode.displayName}', " +
+                        "every comma-separated target must be a valid number. " +
+                        "Invalid: ${invalidTargets.joinToString(", ")}",
+                    Toast.LENGTH_LONG
+                ).show()
+
                 binding.etPresetTarget.requestFocus()
                 return false
             }
         }
-        
+
         return true
     }
 
     private fun updateStepStatus() {
         // Step 1 status
         val hasOverlay = Settings.canDrawOverlays(this)
-        val hasNotify = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        } else true
+
+        val hasNotify =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
 
         if (hasOverlay && hasNotify) {
             binding.tvStep1Status.text = "● OK"
-            binding.tvStep1Status.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
+            binding.tvStep1Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_ok)
+            )
         } else {
             binding.tvStep1Status.text = "● Required"
-            binding.tvStep1Status.setTextColor(ContextCompat.getColor(this, R.color.status_pending))
+            binding.tvStep1Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_pending)
+            )
         }
 
         // Step 3 status
-        val preset = binding.etPresetTarget.text.toString().trim()
-        if (preset.isNotEmpty()) {
-            binding.tvStep3Status.text = "● Target Set"
-            binding.tvStep3Status.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
+        val targets = binding.etPresetTarget.text
+            .toString()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (targets.isNotEmpty()) {
+            binding.tvStep3Status.text =
+                "● ${targets.size} Target(s) Set"
+
+            binding.tvStep3Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_ok)
+            )
         } else {
             binding.tvStep3Status.text = "● Waiting for target"
-            binding.tvStep3Status.setTextColor(ContextCompat.getColor(this, R.color.status_pending))
+            binding.tvStep3Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_pending)
+            )
         }
     }
 
@@ -266,7 +380,10 @@ class MainActivity : AppCompatActivity() {
         binding.spinnerMatchMode.setSelection(config.matchMode.ordinal)
         binding.cbMatchCase.isChecked = config.caseSensitive
         binding.sliderFuzzy.value = config.fuzzyThreshold.toFloat()
-        binding.tvFuzzyThreshold.text = "Fuzzy Threshold: ${config.fuzzyThreshold}%"
+
+        binding.tvFuzzyThreshold.text =
+            "Fuzzy Threshold: ${config.fuzzyThreshold}%"
+
         binding.etPollInterval.setText(config.pollInterval.toString())
         binding.etCooldown.setText(config.cooldownSec.toString())
         binding.cbSoundAlert.isChecked = config.soundAlert
@@ -277,42 +394,68 @@ class MainActivity : AppCompatActivity() {
         binding.switchShowBorder.isChecked = config.showBorder
 
         val r = config.selectedRegion
+
         if (r != null && r.width() > 0) {
-            binding.tvRegionStatus.text = "Region: (${r.left},${r.top}) - ${r.width()}x${r.height()}px"
+            binding.tvRegionStatus.text =
+                "Region: (${r.left},${r.top}) - ${r.width()}x${r.height()}px"
         } else {
             binding.tvRegionStatus.text = "Region: Full Screen"
         }
+
+        updateStepStatus()
     }
 
     private fun saveConfigFromUI() {
-        // Load latest to preserve region updated by Overlay
+        // Load latest to preserve region updated by Overlay.
         val latestConfig = prefs.loadConfig()
-        
-        latestConfig.preset = binding.etPresetTarget.text.toString().trim()
-        latestConfig.matchMode = MatchMode.entries[binding.spinnerMatchMode.selectedItemPosition]
+
+        latestConfig.preset =
+            binding.etPresetTarget.text.toString().trim()
+
+        latestConfig.matchMode =
+            MatchMode.entries[binding.spinnerMatchMode.selectedItemPosition]
+
         latestConfig.caseSensitive = binding.cbMatchCase.isChecked
         latestConfig.fuzzyThreshold = binding.sliderFuzzy.value.toInt()
-        latestConfig.pollInterval = binding.etPollInterval.text.toString().toDoubleOrNull() ?: 1.5
-        latestConfig.cooldownSec = binding.etCooldown.text.toString().toIntOrNull() ?: 10
+
+        latestConfig.pollInterval =
+            binding.etPollInterval.text.toString().toDoubleOrNull() ?: 1.5
+
+        latestConfig.cooldownSec =
+            binding.etCooldown.text.toString().toIntOrNull() ?: 10
+
         latestConfig.soundAlert = binding.cbSoundAlert.isChecked
         latestConfig.continuousBeep = binding.cbContinuousBeep.isChecked
-        latestConfig.beepInterval = binding.etBeepInterval.text.toString().toDoubleOrNull() ?: 0.8
+
+        latestConfig.beepInterval =
+            binding.etBeepInterval.text.toString().toDoubleOrNull() ?: 0.8
+
         latestConfig.toastAlert = binding.cbToastAlert.isChecked
         latestConfig.alertOnce = binding.cbAlertOnce.isChecked
         latestConfig.showBorder = binding.switchShowBorder.isChecked
 
         config = latestConfig
         prefs.saveConfig(config)
+
         if (::firebaseSyncManager.isInitialized) {
             firebaseSyncManager.pushConfig(config)
         }
+
         ScreenCaptureService.instance?.updateConfig(config)
     }
 
     private fun requestInitialPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            if (
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    101
+                )
             }
         }
     }
@@ -325,6 +468,7 @@ class MainActivity : AppCompatActivity() {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             )
+
             overlayPermissionLauncher.launch(intent)
         }
     }
@@ -335,16 +479,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestScreenCaptureAndStart() {
-        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-        screenCaptureLauncher.launch(mediaProjectionManager.createScreenCaptureIntent())
+        val mediaProjectionManager =
+            getSystemService(MEDIA_PROJECTION_SERVICE)
+                    as android.media.projection.MediaProjectionManager
+
+        screenCaptureLauncher.launch(
+            mediaProjectionManager.createScreenCaptureIntent()
+        )
     }
 
-    private fun startCaptureService(resultCode: Int, data: Intent) {
-        val serviceIntent = Intent(this, ScreenCaptureService::class.java).apply {
-            action = ScreenCaptureService.ACTION_START
-            putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
-            putExtra(ScreenCaptureService.EXTRA_DATA, data)
-        }
+    private fun startCaptureService(
+        resultCode: Int,
+        data: Intent
+    ) {
+        val serviceIntent =
+            Intent(this, ScreenCaptureService::class.java).apply {
+                action = ScreenCaptureService.ACTION_START
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(ScreenCaptureService.EXTRA_DATA, data)
+            }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
         } else {
@@ -352,33 +506,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateMonitoringUI(isMonitoring: Boolean, isAlarmRinging: Boolean) {
+    private fun updateMonitoringUI(
+        isMonitoring: Boolean,
+        isAlarmRinging: Boolean
+    ) {
         if (isMonitoring) {
             binding.btnToggleMonitoring.text = "⏹ STOP MONITORING"
-            binding.btnToggleMonitoring.setBackgroundColor(ContextCompat.getColor(this, R.color.btn_red))
+
+            binding.btnToggleMonitoring.setBackgroundColor(
+                ContextCompat.getColor(this, R.color.btn_red)
+            )
+
             binding.tvStep4Status.text = "● Active"
-            binding.tvStep4Status.setTextColor(ContextCompat.getColor(this, R.color.status_ok))
+
+            binding.tvStep4Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_ok)
+            )
         } else {
             binding.btnToggleMonitoring.text = "▶ START MONITORING"
-            binding.btnToggleMonitoring.setBackgroundColor(ContextCompat.getColor(this, R.color.btn_green))
+
+            binding.btnToggleMonitoring.setBackgroundColor(
+                ContextCompat.getColor(this, R.color.btn_green)
+            )
+
             binding.tvStep4Status.text = "● Stopped"
-            binding.tvStep4Status.setTextColor(ContextCompat.getColor(this, R.color.status_error))
+
+            binding.tvStep4Status.setTextColor(
+                ContextCompat.getColor(this, R.color.status_error)
+            )
         }
 
         if (isAlarmRinging) {
             binding.btnStopAlarm.isEnabled = true
             binding.btnStopAlarm.text = "🔕 SILENCE NOW!"
-            binding.btnStopAlarm.setBackgroundColor(ContextCompat.getColor(this, R.color.btn_red))
-            binding.btnStopAlarm.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+
+            binding.btnStopAlarm.setBackgroundColor(
+                ContextCompat.getColor(this, R.color.btn_red)
+            )
+
+            binding.btnStopAlarm.setTextColor(
+                ContextCompat.getColor(this, android.R.color.white)
+            )
         } else {
             binding.btnStopAlarm.isEnabled = false
             binding.btnStopAlarm.text = "🔕 SILENCE"
-            binding.btnStopAlarm.setBackgroundColor(ContextCompat.getColor(this, R.color.btn_disabled))
-            binding.btnStopAlarm.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+
+            binding.btnStopAlarm.setBackgroundColor(
+                ContextCompat.getColor(this, R.color.btn_disabled)
+            )
+
+            binding.btnStopAlarm.setTextColor(
+                ContextCompat.getColor(this, R.color.text_secondary)
+            )
         }
     }
 
-    private fun appendLog(time: String, message: String, tag: String) {
+    private fun appendLog(
+        time: String,
+        message: String,
+        tag: String
+    ) {
         val color = when (tag) {
             "MATCH" -> ContextCompat.getColor(this, R.color.log_match)
             "OCR" -> ContextCompat.getColor(this, R.color.log_ocr)
@@ -387,21 +574,33 @@ class MainActivity : AppCompatActivity() {
             else -> ContextCompat.getColor(this, R.color.log_text)
         }
 
-        // Cap logs at 50 lines to prevent memory bloat
+        // Cap logs at 50 lines to prevent memory bloat.
         val lines = logBuilder.toString().split("\n")
+
         if (lines.size > 50) {
             logBuilder.clear()
+
             lines.takeLast(50).forEach { line ->
-                if (line.isNotBlank()) logBuilder.append(line).append("\n")
+                if (line.isNotBlank()) {
+                    logBuilder.append(line).append("\n")
+                }
             }
         }
 
         val start = logBuilder.length
         val logLine = "[$time] $message\n"
+
         logBuilder.append(logLine)
-        logBuilder.setSpan(ForegroundColorSpan(color), start, logBuilder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        logBuilder.setSpan(
+            ForegroundColorSpan(color),
+            start,
+            logBuilder.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
 
         binding.tvLogs.text = logBuilder
+
         binding.scrollLogs.post {
             binding.scrollLogs.fullScroll(View.FOCUS_DOWN)
         }
@@ -410,6 +609,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateStepStatus()
+
         ScreenCaptureService.instance?.let { service ->
             updateMonitoringUI(service.isMonitoring, false)
         }
