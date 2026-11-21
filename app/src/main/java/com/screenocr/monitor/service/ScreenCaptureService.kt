@@ -107,7 +107,10 @@ class ScreenCaptureService : LifecycleService() {
                 screenHeight != oldHeight ||
                 screenDensity != oldDensity
             ) {
-                log("Display dimensions changed. Updating capture.", "INFO")
+                log(
+                    "Display dimensions changed. Updating capture.",
+                    "INFO"
+                )
                 reinitVirtualDisplay()
             }
         }
@@ -175,10 +178,6 @@ class ScreenCaptureService : LifecycleService() {
         )
     }
 
-    /**
-     * Register the MediaProjection callback before creating
-     * the virtual display.
-     */
     @SuppressLint("WrongConstant")
     private fun initMediaProjection(
         resultCode: Int,
@@ -186,6 +185,8 @@ class ScreenCaptureService : LifecycleService() {
     ): Boolean {
 
         synchronized(this) {
+            var newReader: ImageReader? = null
+
             try {
                 if (mediaProjection == null) {
                     mediaProjection =
@@ -200,7 +201,7 @@ class ScreenCaptureService : LifecycleService() {
                         "MediaProjection could not be initialized"
                     )
 
-                // Register callback before creating virtual display.
+                // Register callback BEFORE creating virtual display.
                 if (mediaProjectionCallback == null) {
 
                     val callback =
@@ -236,63 +237,45 @@ class ScreenCaptureService : LifecycleService() {
                     )
                 }
 
-                // Create image reader.
-                val newReader = ImageReader.newInstance(
+                newReader = ImageReader.newInstance(
                     screenWidth,
                     screenHeight,
                     PixelFormat.RGBA_8888,
                     2
                 )
 
-                // Create the virtual display only if it doesn't exist.
-                if (virtualDisplay == null) {
+                val newDisplay = projection.createVirtualDisplay(
+                    "ScreenOCRMonitorDisplay",
+                    screenWidth,
+                    screenHeight,
+                    screenDensity,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    newReader.surface,
+                    null,
+                    null
+                )
 
-                    imageReader = newReader
-
-                    virtualDisplay = projection.createVirtualDisplay(
-                        "ScreenOCRMonitorDisplay",
-                        screenWidth,
-                        screenHeight,
-                        screenDensity,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                        newReader.surface,
-                        null,
-                        null
-                    )
-
-                } else {
-                    // Update the existing display instead of creating
-                    // another display for the same projection session.
-
-                    virtualDisplay?.resize(
-                        screenWidth,
-                        screenHeight,
-                        screenDensity
-                    )
-
-                    virtualDisplay?.setSurface(newReader.surface)
-
-                    val oldReader = imageReader
-                    imageReader = newReader
-
-                    oldReader?.close()
-                }
-
-                if (virtualDisplay == null) {
+                if (newDisplay == null) {
                     throw IllegalStateException(
                         "Virtual display creation failed"
                     )
                 }
 
+                imageReader = newReader
+                virtualDisplay = newDisplay
+                newReader = null
+
                 log(
                     "Screen capture initialized successfully: " +
-                            "$screenWidth x $screenHeight",
+                        "$screenWidth x $screenHeight",
                     "INFO"
                 )
 
                 return true
 
             } catch (e: Exception) {
+                newReader?.close()
+
                 log(
                     "MediaProjection initialization error: ${e.message}",
                     "ERROR"
@@ -306,9 +289,6 @@ class ScreenCaptureService : LifecycleService() {
         }
     }
 
-    /**
-     * Update the existing virtual display after a screen-size change.
-     */
     private fun reinitVirtualDisplay() {
         synchronized(this) {
             if (mediaProjection == null || virtualDisplay == null) {
@@ -319,8 +299,10 @@ class ScreenCaptureService : LifecycleService() {
                 return
             }
 
+            var newReader: ImageReader? = null
+
             try {
-                val newReader = ImageReader.newInstance(
+                newReader = ImageReader.newInstance(
                     screenWidth,
                     screenHeight,
                     PixelFormat.RGBA_8888,
@@ -337,12 +319,18 @@ class ScreenCaptureService : LifecycleService() {
 
                 val oldReader = imageReader
                 imageReader = newReader
+                newReader = null
 
                 oldReader?.close()
 
-                log("Virtual display resized successfully.", "INFO")
+                log(
+                    "Virtual display resized successfully.",
+                    "INFO"
+                )
 
             } catch (e: Exception) {
+                newReader?.close()
+
                 log(
                     "Virtual display resize error: ${e.message}",
                     "ERROR"
@@ -388,10 +376,12 @@ class ScreenCaptureService : LifecycleService() {
 
                     startForegroundWithNotification()
 
-                    val initialized =
-                        initMediaProjection(projectionResultCode, data)
-
-                    if (initialized) {
+                    if (
+                        initMediaProjection(
+                            projectionResultCode,
+                            data
+                        )
+                    ) {
                         startMonitoring()
                     } else {
                         log(
@@ -549,7 +539,7 @@ class ScreenCaptureService : LifecycleService() {
 
         if (appConfig.preset.isBlank()) {
             log(
-                "Enter target preset text/number before starting.",
+                "Warning: Enter target preset text/number before starting.",
                 "ERROR"
             )
             return
@@ -559,7 +549,7 @@ class ScreenCaptureService : LifecycleService() {
 
         log(
             "Started monitoring. Target: '${appConfig.preset}' " +
-                    "[${appConfig.matchMode.displayName}]",
+                "[${appConfig.matchMode.displayName}]",
             "INFO"
         )
 
@@ -647,4 +637,272 @@ class ScreenCaptureService : LifecycleService() {
                                         if (
                                             appConfig.matchMode in listOf(
                                                 MatchMode.HIGHER_THAN,
-    
+                                                MatchMode.LOWER_THAN,
+                                                MatchMode.EQUAL_TO,
+                                                MatchMode.HIGHER_OR_EQUAL,
+                                                MatchMode.LOWER_OR_EQUAL
+                                            )
+                                        ) {
+                                            val nums =
+                                                MatchEvaluator.extractNumbers(
+                                                    ocrText
+                                                )
+
+                                            log(
+                                                "Numeric Match Triggered! " +
+                                                    "Found: $nums vs Target: ${appConfig.preset}",
+                                                "INFO"
+                                            )
+                                        }
+
+                                        val now = System.currentTimeMillis()
+                                        val cooldownMs =
+                                            appConfig.cooldownSec * 1000L
+
+                                        val shouldAlert =
+                                            (!appConfig.alertOnce ||
+                                                ocrText != lastMatchedText) &&
+                                                (now - lastAlertTime > cooldownMs)
+
+                                        if (shouldAlert) {
+                                            lastMatchedText = ocrText
+                                            lastAlertTime = now
+
+                                            log(
+                                                "MATCH DETECTED " +
+                                                    "[${appConfig.matchMode.displayName}]: " +
+                                                    "'${appConfig.preset}' found in \"$displayText\"",
+                                                "MATCH"
+                                            )
+
+                                            triggerMatchAlert()
+                                        }
+                                    }
+                                }
+
+                            } finally {
+                                frameBitmap.recycle()
+                            }
+                        }
+
+                    } catch (e: Exception) {
+                        log(
+                            "OCR Loop error: ${e.message}",
+                            "ERROR"
+                        )
+                    }
+
+                    val pollDelay =
+                        (maxOf(0.2, appConfig.pollInterval) * 1000).toLong()
+
+                    delay(pollDelay)
+                }
+            }
+    }
+
+    private fun captureScreenRegion(): Bitmap? {
+        synchronized(this) {
+            val reader = imageReader ?: return null
+            var image: Image? = null
+
+            try {
+                image = reader.acquireLatestImage()
+                    ?: return null
+
+                val planes = image.planes
+                val buffer: ByteBuffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+
+                val actualBufferWidth = rowStride / pixelStride
+
+                val fullBitmap = Bitmap.createBitmap(
+                    actualBufferWidth,
+                    screenHeight,
+                    Bitmap.Config.ARGB_8888
+                )
+
+                fullBitmap.copyPixelsFromBuffer(buffer)
+
+                if (appConfig.showBorder) {
+                    val region = appConfig.selectedRegion
+
+                    if (
+                        region != null &&
+                        region.width() > 5 &&
+                        region.height() > 5
+                    ) {
+                        val safeLeft =
+                            maxOf(0, minOf(region.left, screenWidth - 1))
+
+                        val safeTop =
+                            maxOf(0, minOf(region.top, screenHeight - 1))
+
+                        val safeWidth =
+                            minOf(region.width(), screenWidth - safeLeft)
+
+                        val safeHeight =
+                            minOf(region.height(), screenHeight - safeTop)
+
+                        if (safeWidth > 5 && safeHeight > 5) {
+                            val cropped = Bitmap.createBitmap(
+                                fullBitmap,
+                                safeLeft,
+                                safeTop,
+                                safeWidth,
+                                safeHeight
+                            )
+
+                            fullBitmap.recycle()
+                            return cropped
+                        }
+                    }
+
+                    fullBitmap.recycle()
+                    return null
+                }
+
+                val screenOnly = Bitmap.createBitmap(
+                    fullBitmap,
+                    0,
+                    0,
+                    screenWidth,
+                    screenHeight
+                )
+
+                fullBitmap.recycle()
+                return screenOnly
+
+            } catch (e: Exception) {
+                return null
+
+            } finally {
+                image?.close()
+            }
+        }
+    }
+
+    private fun triggerMatchAlert() {
+        alarmPlayer.triggerAlarm(
+            appConfig.continuousBeep,
+            appConfig.beepInterval
+        )
+
+        com.screenocr.monitor.firebase.FirebaseSyncManager
+            .getInstance(this)
+            .pushAlert("Target matched: ${appConfig.preset}")
+    }
+
+    fun stopMonitoring() {
+        if (!isMonitoring) return
+
+        isMonitoring = false
+
+        monitoringJob?.cancel()
+        monitoringJob = null
+
+        stopAlarm()
+
+        log("Stopped monitoring.", "INFO")
+
+        lifecycleScope.launch(Dispatchers.Main) {
+            android.widget.Toast.makeText(
+                this@ScreenCaptureService,
+                "Monitoring Stopped",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+
+            updateNotification()
+
+            onStatusChanged?.invoke(false, false)
+
+            OverlayService.instance?.updateStatusUI(
+                false,
+                false,
+                "Stopped"
+            )
+        }
+    }
+
+    fun stopAlarm() {
+        if (::alarmPlayer.isInitialized) {
+            alarmPlayer.stopAlarm()
+        }
+
+        log("Alarm silenced.", "INFO")
+        updateNotification()
+    }
+
+    fun updateRegion(rect: Rect?) {
+        appConfig.selectedRegion = rect
+        appConfig.showBorder = (rect != null)
+
+        log(
+            if (rect != null) {
+                "Region updated: (${rect.left},${rect.top}) - " +
+                    "${rect.width()}x${rect.height()}px"
+            } else {
+                "Region set to Full Screen"
+            },
+            "INFO"
+        )
+    }
+
+    fun updateConfig(config: AppConfig) {
+        this.appConfig = config
+    }
+
+    private fun log(message: String, tag: String) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            val time = SimpleDateFormat(
+                "HH:mm:ss",
+                Locale.getDefault()
+            ).format(Date())
+
+            onLogReceived?.invoke(time, message, tag)
+        }
+    }
+
+    override fun onDestroy() {
+        stopMonitoring()
+
+        val displayManager =
+            getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
+        displayManager.unregisterDisplayListener(displayListener)
+
+        if (::alarmPlayer.isInitialized) {
+            alarmPlayer.release()
+        }
+
+        mediaProjectionCallback?.let { callback ->
+            try {
+                mediaProjection?.unregisterCallback(callback)
+            } catch (_: Exception) {
+                // Projection may already have stopped.
+            }
+        }
+
+        mediaProjectionCallback = null
+
+        virtualDisplay?.release()
+        virtualDisplay = null
+
+        imageReader?.close()
+        imageReader = null
+
+        mediaProjection?.stop()
+        mediaProjection = null
+
+        ocrEngine.close()
+
+        instance = null
+
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent): IBinder? {
+        super.onBind(intent)
+        return null
+    }
+}
